@@ -1,0 +1,116 @@
+---
+title: "rfagraphs"
+author: "averyrogers"
+date: "`r Sys.Date()`"
+output: 
+  github_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(tidyverse)
+library(rvest)
+library(lubridate)
+library(readr)
+library(readxl)
+# Parameters
+webpage <- "https://www.dir.ca.gov/fraud_prevention/suspension-list.htm"
+css_selector <- "#tbl-1"
+provider_xl <- "~/Downloads/CaPhysiciansData2015.xlsx"
+#===============================================================================
+
+# Code
+```
+
+```{r}
+medical_fraud <-
+  webpage %>% 
+  read_html() %>% 
+  html_node(css = css_selector) %>% 
+  html_table() %>% 
+  as_tibble()
+
+medical_fraud <-
+  medical_fraud %>% 
+  arrange(Name) %>% 
+  mutate(
+    issued = as.Date(`Notice issued`, format = "%m/%d/%Y"), 
+    suspension = as.Date(`Suspension`, format = "%m/%d/%Y")
+  ) %>% 
+  select(-c(`Notice issued`, Suspension, Appealed))
+```
+
+
+```{r}
+medical_fraud %>% 
+  count(round_date(issued, unit = "quarter"), name = "total_docs") %>% 
+  ggplot(aes(`round_date(issued, unit = "quarter")`, total_docs)) +
+  geom_line()
+```
+
+```{r}
+providers <- read_excel(provider_xl, skip = 2)
+
+providers
+providers_simple <- 
+  providers %>% 
+  select(
+    county = `County Name`, 
+    total = `All Specialties`, 
+    population = Population, 
+    per_hundredk = `Specialists per 100,000 population`
+  ) %>% 
+  mutate(
+    countycolor =
+      ifelse(county == "San Francisco", "sf", 
+             ifelse(county == "Los Angeles", "la", 
+                    ifelse(county == "San Diego", "sd", "no")))) 
+
+providers_simple %>% 
+  filter(per_hundredk > 0) %>% 
+  filter(population > 100000) %>% 
+  ggplot(aes(reorder(county, desc(per_hundredk)), per_hundredk, fill = countycolor)) +
+  geom_col() +
+  scale_fill_manual(
+    values = 
+      c("sf" = "tomato", "la" = "deepskyblue1", "sd" = "springgreen3", "no" = "gray70"), 
+    guide = FALSE 
+  ) +
+  geom_text(
+    aes( x= "Placer", y= 210, label= "San Francisco"),
+    color="black", 
+    size=3.5, 
+  ) +
+  geom_text(
+    aes( x= "Sonoma", y= 125, label= "Los Angeles"),
+    color="black", 
+    size=3.5, 
+  ) +
+  geom_text(
+    aes( x= "Santa Barbara", y= 147, label= "San Diego"),
+    color="black", 
+    size=3.5, 
+  ) +
+  scale_y_continuous(limits = c(0,250), expand = c(0, 0)) +
+  geom_segment(x = "Contra Costa", xend = "San Diego", y = 140, yend = 117, size = .2) +
+  geom_segment(x = "Santa Barbara", xend = "Los Angeles", y = 120, yend = 112, size = .2) +
+  theme_minimal() +
+  theme(
+    axis.text.x=element_blank(),
+    axis.title.y=element_blank(),
+    panel.grid.major = element_line(colour = "grey88")
+  ) +
+  labs(
+    x = "County", 
+    y = "Physicians of All Specialties per 100,000 residents", 
+    title = "Physicians of all Specialties per 100,000 Residents in California Counties, 2015"
+  )
+  
+```
+
+
